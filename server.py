@@ -1,16 +1,12 @@
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
-import hashlib
 import json
 import os
 
 DB_FILE = "users_db.json"
-ADMIN_SECRET = "super_secret_admin_key"  # можешь поменять на свой ключ
+ADMIN_SECRET = "super_secret_admin_key"  # поменяй на свой ключ
 
 app = Flask(__name__)
-
-def h(s: str) -> str:
-    return hashlib.sha256(s.encode()).hexdigest()
 
 def load_db():
     if not os.path.exists(DB_FILE):
@@ -39,6 +35,8 @@ def require_admin(req):
     key = (req.args.get("key") or (req.json or {}).get("key") or "").strip()
     return key == ADMIN_SECRET
 
+# ====== AUTH для лоадера ======
+
 @app.route("/auth", methods=["POST"])
 def auth():
     data = request.json or {}
@@ -48,7 +46,7 @@ def auth():
 
     db = load_db()
     user = find_user_by_login(db, login)
-    if not user or user.get("pass_hash") != h(password):
+    if not user or user.get("password") != password:
         return jsonify({"ok": False, "error": "bad_credentials"}), 401
 
     if user.get("banned"):
@@ -84,6 +82,8 @@ def auth():
         "hwid": user.get("hwid")
     }), 200
 
+# ====== АДМИНKA ======
+
 @app.route("/admin/create_user", methods=["POST"])
 def admin_create_user():
     if not require_admin(request):
@@ -94,6 +94,9 @@ def admin_create_user():
     name = data.get("name", "").strip() or login
     password = data.get("password", "")
 
+    if not login or not password:
+        return jsonify({"ok": False, "error": "bad_input"}), 400
+
     db = load_db()
     if find_user_by_login(db, login):
         return jsonify({"ok": False, "error": "exists"}), 400
@@ -103,7 +106,7 @@ def admin_create_user():
         "uid": uid,
         "login": login,
         "name": name,
-        "pass_hash": h(password),
+        "password": password,
         "plan": "none",
         "expire_at": None,
         "banned": False,
@@ -178,4 +181,5 @@ def admin_ban_toggle():
     return jsonify({"ok": True, "banned": user["banned"]})
 
 if __name__ == "__main__":
+    # Render читает порт сам, оставляем 8080
     app.run(host="0.0.0.0", port=8080)
